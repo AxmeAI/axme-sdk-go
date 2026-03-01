@@ -4,7 +4,9 @@ Official Go SDK for Axme APIs and workflows.
 
 ## Status
 
-Beta parity kickoff in progress.
+Status: Beta (best-effort).
+API may change.
+For production use, prefer REST/OpenAPI or Python/TS SDKs.
 
 ## Quickstart
 
