@@ -114,6 +114,74 @@ func (c *Client) UpdateUserProfile(
 	return c.requestJSON(ctx, http.MethodPost, "/v1/users/profile/update", nil, payload, options)
 }
 
+func (c *Client) CreateServiceAccount(
+	ctx context.Context,
+	payload map[string]any,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.requestJSON(ctx, http.MethodPost, "/v1/service-accounts", nil, payload, options)
+}
+
+func (c *Client) ListServiceAccounts(
+	ctx context.Context,
+	orgID string,
+	workspaceID string,
+	options RequestOptions,
+) (map[string]any, error) {
+	query := map[string]string{"org_id": orgID}
+	if strings.TrimSpace(workspaceID) != "" {
+		query["workspace_id"] = workspaceID
+	}
+	return c.requestJSON(ctx, http.MethodGet, "/v1/service-accounts", query, nil, options)
+}
+
+func (c *Client) GetServiceAccount(
+	ctx context.Context,
+	serviceAccountID string,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.requestJSON(
+		ctx,
+		http.MethodGet,
+		fmt.Sprintf("/v1/service-accounts/%s", serviceAccountID),
+		nil,
+		nil,
+		options,
+	)
+}
+
+func (c *Client) CreateServiceAccountKey(
+	ctx context.Context,
+	serviceAccountID string,
+	payload map[string]any,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.requestJSON(
+		ctx,
+		http.MethodPost,
+		fmt.Sprintf("/v1/service-accounts/%s/keys", serviceAccountID),
+		nil,
+		payload,
+		options,
+	)
+}
+
+func (c *Client) RevokeServiceAccountKey(
+	ctx context.Context,
+	serviceAccountID string,
+	keyID string,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.requestJSON(
+		ctx,
+		http.MethodPost,
+		fmt.Sprintf("/v1/service-accounts/%s/keys/%s/revoke", serviceAccountID, keyID),
+		nil,
+		nil,
+		options,
+	)
+}
+
 func (c *Client) requestJSON(
 	ctx context.Context,
 	method string,

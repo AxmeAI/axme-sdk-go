@@ -78,3 +78,13 @@ func main() {
 ```bash
 go test ./...
 ```
+
+## Enterprise Admin APIs
+
+Go SDK now includes service-account lifecycle helpers:
+
+- `CreateServiceAccount`
+- `ListServiceAccounts`
+- `GetServiceAccount`
+- `CreateServiceAccountKey`
+- `RevokeServiceAccountKey`
