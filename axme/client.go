@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -20,6 +21,9 @@ type ClientConfig struct {
 type RequestOptions struct {
 	IdempotencyKey string
 	TraceID        string
+	OwnerAgent     string
+	XOwnerAgent    string
+	Authorization  string
 }
 
 type HTTPError struct {
@@ -182,6 +186,267 @@ func (c *Client) RevokeServiceAccountKey(
 	)
 }
 
+func (c *Client) CreateIntent(
+	ctx context.Context,
+	payload map[string]any,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.requestJSON(ctx, http.MethodPost, "/v1/intents", nil, payload, options)
+}
+
+func (c *Client) GetIntent(
+	ctx context.Context,
+	intentID string,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.requestJSON(
+		ctx,
+		http.MethodGet,
+		fmt.Sprintf("/v1/intents/%s", intentID),
+		nil,
+		nil,
+		options,
+	)
+}
+
+func (c *Client) ListIntentEvents(
+	ctx context.Context,
+	intentID string,
+	since *int,
+	options RequestOptions,
+) (map[string]any, error) {
+	query := map[string]string{}
+	if since != nil && *since >= 0 {
+		query["since"] = strconv.Itoa(*since)
+	}
+	return c.requestJSON(
+		ctx,
+		http.MethodGet,
+		fmt.Sprintf("/v1/intents/%s/events", intentID),
+		query,
+		nil,
+		options,
+	)
+}
+
+func (c *Client) ResolveIntent(
+	ctx context.Context,
+	intentID string,
+	payload map[string]any,
+	options RequestOptions,
+) (map[string]any, error) {
+	query := map[string]string{}
+	if strings.TrimSpace(options.OwnerAgent) != "" {
+		query["owner_agent"] = options.OwnerAgent
+	}
+	return c.requestJSON(
+		ctx,
+		http.MethodPost,
+		fmt.Sprintf("/v1/intents/%s/resolve", intentID),
+		query,
+		payload,
+		options,
+	)
+}
+
+func (c *Client) ResumeIntent(
+	ctx context.Context,
+	intentID string,
+	payload map[string]any,
+	options RequestOptions,
+) (map[string]any, error) {
+	query := map[string]string{}
+	if strings.TrimSpace(options.OwnerAgent) != "" {
+		query["owner_agent"] = options.OwnerAgent
+	}
+	return c.requestJSON(
+		ctx,
+		http.MethodPost,
+		fmt.Sprintf("/v1/intents/%s/resume", intentID),
+		query,
+		payload,
+		options,
+	)
+}
+
+func (c *Client) UpdateIntentControls(
+	ctx context.Context,
+	intentID string,
+	payload map[string]any,
+	options RequestOptions,
+) (map[string]any, error) {
+	query := map[string]string{}
+	if strings.TrimSpace(options.OwnerAgent) != "" {
+		query["owner_agent"] = options.OwnerAgent
+	}
+	return c.requestJSON(
+		ctx,
+		http.MethodPost,
+		fmt.Sprintf("/v1/intents/%s/controls", intentID),
+		query,
+		payload,
+		options,
+	)
+}
+
+func (c *Client) UpdateIntentPolicy(
+	ctx context.Context,
+	intentID string,
+	payload map[string]any,
+	options RequestOptions,
+) (map[string]any, error) {
+	query := map[string]string{}
+	if strings.TrimSpace(options.OwnerAgent) != "" {
+		query["owner_agent"] = options.OwnerAgent
+	}
+	return c.requestJSON(
+		ctx,
+		http.MethodPost,
+		fmt.Sprintf("/v1/intents/%s/policy", intentID),
+		query,
+		payload,
+		options,
+	)
+}
+
+func (c *Client) CreateAccessRequest(
+	ctx context.Context,
+	payload map[string]any,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.requestJSON(ctx, http.MethodPost, "/v1/access-requests", nil, payload, options)
+}
+
+func (c *Client) ListAccessRequests(
+	ctx context.Context,
+	orgID string,
+	workspaceID string,
+	state string,
+	options RequestOptions,
+) (map[string]any, error) {
+	query := map[string]string{}
+	if strings.TrimSpace(orgID) != "" {
+		query["org_id"] = orgID
+	}
+	if strings.TrimSpace(workspaceID) != "" {
+		query["workspace_id"] = workspaceID
+	}
+	if strings.TrimSpace(state) != "" {
+		query["state"] = state
+	}
+	return c.requestJSON(ctx, http.MethodGet, "/v1/access-requests", query, nil, options)
+}
+
+func (c *Client) GetAccessRequest(
+	ctx context.Context,
+	accessRequestID string,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.requestJSON(
+		ctx,
+		http.MethodGet,
+		fmt.Sprintf("/v1/access-requests/%s", accessRequestID),
+		nil,
+		nil,
+		options,
+	)
+}
+
+func (c *Client) ReviewAccessRequest(
+	ctx context.Context,
+	accessRequestID string,
+	payload map[string]any,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.requestJSON(
+		ctx,
+		http.MethodPost,
+		fmt.Sprintf("/v1/access-requests/%s/review", accessRequestID),
+		nil,
+		payload,
+		options,
+	)
+}
+
+func (c *Client) BindAlias(
+	ctx context.Context,
+	payload map[string]any,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.requestJSON(ctx, http.MethodPost, "/v1/aliases", nil, payload, options)
+}
+
+func (c *Client) ListAliases(
+	ctx context.Context,
+	orgID string,
+	workspaceID string,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.requestJSON(
+		ctx,
+		http.MethodGet,
+		"/v1/aliases",
+		map[string]string{"org_id": orgID, "workspace_id": workspaceID},
+		nil,
+		options,
+	)
+}
+
+func (c *Client) RevokeAlias(
+	ctx context.Context,
+	aliasID string,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.requestJSON(
+		ctx,
+		http.MethodPost,
+		fmt.Sprintf("/v1/aliases/%s/revoke", aliasID),
+		nil,
+		nil,
+		options,
+	)
+}
+
+func (c *Client) ResolveAlias(
+	ctx context.Context,
+	orgID string,
+	workspaceID string,
+	alias string,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.requestJSON(
+		ctx,
+		http.MethodGet,
+		"/v1/aliases/resolve",
+		map[string]string{"org_id": orgID, "workspace_id": workspaceID, "alias": alias},
+		nil,
+		options,
+	)
+}
+
+func (c *Client) DecideApproval(
+	ctx context.Context,
+	approvalID string,
+	payload map[string]any,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.requestJSON(
+		ctx,
+		http.MethodPost,
+		fmt.Sprintf("/v1/approvals/%s/decision", approvalID),
+		nil,
+		payload,
+		options,
+	)
+}
+
+func (c *Client) GetCapabilities(
+	ctx context.Context,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.requestJSON(ctx, http.MethodGet, "/v1/capabilities", nil, nil, options)
+}
+
 func (c *Client) requestJSON(
 	ctx context.Context,
 	method string,
@@ -219,10 +484,17 @@ func (c *Client) requestJSON(
 		return nil, err
 	}
 
-	request.Header.Set("Authorization", "Bearer "+c.apiKey)
+	if strings.TrimSpace(options.Authorization) != "" {
+		request.Header.Set("Authorization", options.Authorization)
+	} else {
+		request.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
 	request.Header.Set("Accept", "application/json")
 	if payload != nil {
 		request.Header.Set("Content-Type", "application/json")
+	}
+	if strings.TrimSpace(options.XOwnerAgent) != "" {
+		request.Header.Set("x-owner-agent", options.XOwnerAgent)
 	}
 	if strings.TrimSpace(options.IdempotencyKey) != "" {
 		request.Header.Set("Idempotency-Key", options.IdempotencyKey)
