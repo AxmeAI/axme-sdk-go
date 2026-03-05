@@ -3,7 +3,7 @@
 **Official Go SDK for the AXME platform.** Send and manage intents, observe lifecycle events, handle approvals and inbox operations, and access the full enterprise admin surface — idiomatic Go, context-aware, no dependencies beyond the standard library.
 
 > **Alpha** · API surface is stabilizing. Not recommended for production workloads yet.  
-> Bug reports, feedback, and alpha access → [hello@axme.ai](mailto:hello@axme.ai)
+> Alpha access: https://cloud.axme.ai/alpha · Contact and suggestions: [hello@axme.ai](mailto:hello@axme.ai)
 
 ---
 
@@ -206,6 +206,6 @@ go test ./...
 ## Contributing & Contact
 
 - Bug reports and feature requests: open an issue in this repository
-- Alpha program access and integration questions: [hello@axme.ai](mailto:hello@axme.ai)
+- Alpha access: https://cloud.axme.ai/alpha · Contact and suggestions: [hello@axme.ai](mailto:hello@axme.ai)
 - Security disclosures: see [SECURITY.md](SECURITY.md)
 - Contribution guidelines: [CONTRIBUTING.md](CONTRIBUTING.md)
