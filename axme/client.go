@@ -13,9 +13,11 @@ import (
 )
 
 type ClientConfig struct {
-	BaseURL    string
-	APIKey     string
-	HTTPClient *http.Client
+	BaseURL     string
+	APIKey      string
+	ActorToken  string
+	BearerToken string
+	HTTPClient  *http.Client
 }
 
 type RequestOptions struct {
@@ -38,18 +40,27 @@ func (e *HTTPError) Error() string {
 type Client struct {
 	baseURL    string
 	apiKey     string
+	actorToken string
 	httpClient *http.Client
 }
 
 func NewClient(config ClientConfig) (*Client, error) {
 	baseURL := strings.TrimSpace(config.BaseURL)
 	apiKey := strings.TrimSpace(config.APIKey)
+	actorToken := strings.TrimSpace(config.ActorToken)
+	bearerToken := strings.TrimSpace(config.BearerToken)
 
 	if baseURL == "" {
 		return nil, fmt.Errorf("baseURL is required")
 	}
 	if apiKey == "" {
 		return nil, fmt.Errorf("apiKey is required")
+	}
+	if actorToken != "" && bearerToken != "" && actorToken != bearerToken {
+		return nil, fmt.Errorf("actorToken and bearerToken must match when both are provided")
+	}
+	if actorToken == "" && bearerToken != "" {
+		actorToken = bearerToken
 	}
 
 	httpClient := config.HTTPClient
@@ -60,6 +71,7 @@ func NewClient(config ClientConfig) (*Client, error) {
 	return &Client{
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		apiKey:     apiKey,
+		actorToken: actorToken,
 		httpClient: httpClient,
 	}, nil
 }
@@ -1221,10 +1233,11 @@ func (c *Client) requestJSON(
 		return nil, err
 	}
 
+	request.Header.Set("x-api-key", c.apiKey)
 	if strings.TrimSpace(options.Authorization) != "" {
 		request.Header.Set("Authorization", options.Authorization)
-	} else {
-		request.Header.Set("Authorization", "Bearer "+c.apiKey)
+	} else if c.actorToken != "" {
+		request.Header.Set("Authorization", "Bearer "+c.actorToken)
 	}
 	request.Header.Set("Accept", "application/json")
 	if payload != nil {
