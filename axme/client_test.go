@@ -16,8 +16,8 @@ func TestRegisterNick(t *testing.T) {
 		if r.URL.Path != "/v1/users/register-nick" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
-		if got := r.Header.Get("Authorization"); got != "Bearer token" {
-			t.Fatalf("unexpected authorization header: %s", got)
+		if got := r.Header.Get("x-api-key"); got != "token" {
+			t.Fatalf("unexpected x-api-key header: %s", got)
 		}
 		if got := r.Header.Get("Idempotency-Key"); got != "register-1" {
 			t.Fatalf("unexpected idempotency header: %s", got)
@@ -55,6 +55,49 @@ func TestRegisterNick(t *testing.T) {
 	}
 	if response["ok"] != true {
 		t.Fatalf("unexpected response: %v", response)
+	}
+}
+
+func TestClientSendsConfiguredActorToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("x-api-key"); got != "platform-token" {
+			t.Fatalf("unexpected x-api-key header: %s", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer actor-token" {
+			t.Fatalf("unexpected authorization header: %s", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "available": true})
+	}))
+	defer server.Close()
+
+	client, err := NewClient(
+		ClientConfig{
+			BaseURL:    server.URL,
+			APIKey:     "platform-token",
+			ActorToken: "actor-token",
+			HTTPClient: server.Client(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	if _, err := client.CheckNick(context.Background(), "@partner.user", RequestOptions{}); err != nil {
+		t.Fatalf("check nick failed: %v", err)
+	}
+}
+
+func TestNewClientRejectsConflictingActorTokenAliases(t *testing.T) {
+	_, err := NewClient(
+		ClientConfig{
+			BaseURL:     "https://api.axme.test",
+			APIKey:      "platform-token",
+			ActorToken:  "actor-a",
+			BearerToken: "actor-b",
+		},
+	)
+	if err == nil {
+		t.Fatalf("expected constructor error for conflicting actor token aliases")
 	}
 }
 
