@@ -7,6 +7,43 @@
 
 ---
 
+## What Is AXME?
+
+AXME is a coordination infrastructure for durable execution of long-running intents across distributed systems.
+
+It provides a model for executing **intents** — requests that may take minutes, hours, or longer to complete — across services, agents, and human participants.
+
+## AXP — the Intent Protocol
+
+At the core of AXME is **AXP (Intent Protocol)** — an open protocol that defines contracts and lifecycle rules for intent processing.
+
+AXP can be implemented independently.  
+The open part of the platform includes:
+
+- the protocol specification and schemas
+- SDKs and CLI for integration
+- conformance tests
+- implementation and integration documentation
+
+## AXME Cloud
+
+**AXME Cloud** is the managed service that runs AXP in production together with **The Registry** (identity and routing).
+
+It removes operational complexity by providing:
+
+- reliable intent delivery and retries  
+- lifecycle management for long-running operations  
+- handling of timeouts, waits, reminders, and escalation  
+- observability of intent status and execution history  
+
+State and events can be accessed through:
+
+- API and SDKs  
+- event streams and webhooks  
+- the cloud console
+
+---
+
 ## What You Can Do With This SDK
 
 - **Send intents** — create typed, durable actions with delivery guarantees
@@ -20,8 +57,10 @@
 ## Install
 
 ```bash
-go get github.com/AxmeAI/axme-sdk-go
+go get github.com/AxmeAI/axme-sdk-go@latest
 ```
+
+Go modules are published by git tag and module path (no separate central package name). The import package remains `axme`.
 
 ---
 
@@ -41,7 +80,8 @@ import (
 func main() {
     client, err := axme.NewClient(axme.ClientConfig{
         BaseURL: "https://gateway.axme.ai",
-        APIKey:  "YOUR_API_KEY",
+        APIKey:  "YOUR_PLATFORM_API_KEY",  // sent as x-api-key
+        ActorToken: "OPTIONAL_USER_OR_SESSION_TOKEN", // sent as Authorization: Bearer
     })
     if err != nil {
         log.Fatal(err)
@@ -49,12 +89,12 @@ func main() {
 
     ctx := context.Background()
 
-    // Check connectivity
-    health, err := client.Health(ctx)
+    // Check connectivity / discover available capabilities
+    capabilities, err := client.GetCapabilities(ctx, axme.RequestOptions{})
     if err != nil {
         log.Fatal(err)
     }
-    fmt.Println(health)
+    fmt.Println(capabilities)
 
     // Send an intent
     intent, err := client.CreateIntent(ctx, map[string]any{
@@ -105,17 +145,31 @@ if err != nil {
 ## Approvals
 
 ```go
-inbox, err := client.ListInbox(ctx, map[string]any{
-    "owner_agent": "agent://manager",
-    "status":      "PENDING",
-}, axme.RequestOptions{})
+inbox, err := client.ListInbox(ctx, "agent://manager", axme.RequestOptions{})
+if err != nil {
+    log.Fatal(err)
+}
 
-for _, item := range inbox["items"].([]any) {
-    entry := item.(map[string]any)
-    _, err = client.ResolveApproval(ctx, entry["intent_id"].(string), map[string]any{
-        "decision": "approved",
-        "note":     "LGTM",
-    }, axme.RequestOptions{})
+items, _ := inbox["items"].([]any)
+for _, item := range items {
+    entry, ok := item.(map[string]any)
+    if !ok {
+        continue
+    }
+    threadID, ok := entry["thread_id"].(string)
+    if !ok || threadID == "" {
+        continue
+    }
+    _, err = client.ApproveInboxThread(
+        ctx,
+        threadID,
+        map[string]any{"note": "LGTM"},
+        "agent://manager",
+        axme.RequestOptions{},
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
 }
 ```
 
@@ -133,10 +187,10 @@ sa, _ := client.CreateServiceAccount(ctx, map[string]any{
 }, axme.RequestOptions{IdempotencyKey: "sa-ci-runner-001"})
 
 // Issue a key
-key, _ := client.CreateServiceAccountKey(ctx, sa["id"].(string), axme.RequestOptions{})
+key, _ := client.CreateServiceAccountKey(ctx, sa["id"].(string), map[string]any{}, axme.RequestOptions{})
 
 // List all service accounts
-list, _ := client.ListServiceAccounts(ctx, "org_abc", axme.RequestOptions{})
+list, _ := client.ListServiceAccounts(ctx, "org_abc", "", axme.RequestOptions{})
 
 // Revoke a key
 client.RevokeServiceAccountKey(ctx, sa["id"].(string), key["key_id"].(string), axme.RequestOptions{})
