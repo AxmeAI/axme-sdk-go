@@ -12,6 +12,8 @@ import (
 	"strings"
 )
 
+const defaultBaseURL = "https://api.cloud.axme.ai"
+
 type ClientConfig struct {
 	BaseURL     string
 	APIKey      string
@@ -50,11 +52,11 @@ func NewClient(config ClientConfig) (*Client, error) {
 	actorToken := strings.TrimSpace(config.ActorToken)
 	bearerToken := strings.TrimSpace(config.BearerToken)
 
-	if baseURL == "" {
-		return nil, fmt.Errorf("baseURL is required")
-	}
 	if apiKey == "" {
 		return nil, fmt.Errorf("apiKey is required")
+	}
+	if baseURL == "" {
+		baseURL = defaultBaseURL
 	}
 	if actorToken != "" && bearerToken != "" && actorToken != bearerToken {
 		return nil, fmt.Errorf("actorToken and bearerToken must match when both are provided")
