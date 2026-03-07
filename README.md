@@ -79,9 +79,10 @@ import (
 
 func main() {
     client, err := axme.NewClient(axme.ClientConfig{
-        BaseURL: "https://gateway.axme.ai",
-        APIKey:  "YOUR_PLATFORM_API_KEY",  // sent as x-api-key
+        APIKey:  "AXME_API_KEY",  // sent as x-api-key
         ActorToken: "OPTIONAL_USER_OR_SESSION_TOKEN", // sent as Authorization: Bearer
+        // Optional override (defaults to https://api.cloud.axme.ai):
+        // BaseURL: "https://staging-api.cloud.axme.ai",
     })
     if err != nil {
         log.Fatal(err)
@@ -108,6 +109,25 @@ func main() {
     fmt.Println(intent["intent_id"], intent["status"])
 }
 ```
+
+---
+
+## Minimal Language-Native Example
+
+Short basic submit/get example:
+
+- [`examples/basic_submit.go`](examples/basic_submit.go)
+
+Run:
+
+```bash
+AXME_API_KEY="axme_sa_..." go run ./examples/basic_submit.go
+```
+
+Full runnable scenario set lives in:
+
+- Cloud: <https://github.com/AxmeAI/axme-examples/tree/main/cloud>
+- Protocol-only: <https://github.com/AxmeAI/axme-examples/tree/main/protocol>
 
 ---
 
@@ -230,6 +250,8 @@ axme-sdk-go/
 ├── axme/
 │   ├── client.go              # AxmeClient — all API methods
 │   └── config.go              # ClientConfig and RequestOptions
+├── examples/
+│   └── basic_submit.go        # Minimal language-native quickstart
 └── docs/
     └── diagrams/              # Diagram copies for README embedding
 ```

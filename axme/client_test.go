@@ -101,6 +101,16 @@ func TestNewClientRejectsConflictingActorTokenAliases(t *testing.T) {
 	}
 }
 
+func TestNewClientUsesDefaultBaseURLWhenMissing(t *testing.T) {
+	client, err := NewClient(ClientConfig{APIKey: "token"})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	if client.baseURL != "https://api.cloud.axme.ai" {
+		t.Fatalf("unexpected default base url: %s", client.baseURL)
+	}
+}
+
 func TestCheckNick(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
