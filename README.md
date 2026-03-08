@@ -1,6 +1,6 @@
 # axme-sdk-go
 
-**Official Go SDK for the AXME platform.** Send and manage intents, observe lifecycle events, handle approvals and inbox operations, and access the full enterprise admin surface — idiomatic Go, context-aware, no dependencies beyond the standard library.
+**Official Go SDK for the AXME platform.** Send and manage intents, poll lifecycle events and history, handle approvals and inbox operations, and access the full enterprise admin surface — idiomatic Go, context-aware, no dependencies beyond the standard library.
 
 > **Alpha** · API surface is stabilizing. Not recommended for production workloads yet.  
 > Alpha access: https://cloud.axme.ai/alpha · Contact and suggestions: [hello@axme.ai](mailto:hello@axme.ai)
@@ -47,7 +47,7 @@ State and events can be accessed through:
 ## What You Can Do With This SDK
 
 - **Send intents** — create typed, durable actions with delivery guarantees
-- **Observe lifecycle** — stream real-time state events
+- **Poll lifecycle events** — retrieve real-time state events and intent history via `ListIntentEvents`
 - **Approve or reject** — handle human-in-the-loop steps from Go services
 - **Control workflows** — pause, resume, cancel, update retry policies and reminders
 - **Administer** — manage organizations, workspaces, service accounts, and grants
