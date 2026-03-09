@@ -135,7 +135,7 @@ Full runnable scenario set lives in:
 
 The SDK covers the full public API surface:
 
-![API Method Family Map](docs/diagrams/01-api-method-family-map.svg)
+![API Method Family Map](https://raw.githubusercontent.com/AxmeAI/axme-docs/main/docs/diagrams/api/01-api-method-family-map.svg)
 
 *D1 families (intents, inbox, approvals) are the core integration path. D2 adds schemas, webhooks, and media. D3 covers enterprise admin. The Go SDK implements all three tiers.*
 
@@ -145,7 +145,7 @@ The SDK covers the full public API surface:
 
 The Go SDK maps platform error codes to typed errors. Use the error model to decide whether to retry:
 
-![Error Model and Retriability](docs/diagrams/02-error-model-retriability.svg)
+![Error Model and Retriability](https://raw.githubusercontent.com/AxmeAI/axme-docs/main/docs/diagrams/api/02-error-model-retriability.svg)
 
 *`4xx` client errors are wrapped in `AxmeClientError` — do not retry. `5xx` errors are `AxmeServerError` — safe to retry with the original idempotency key. The `RetryAfter` field provides the wait hint.*
 
@@ -253,7 +253,6 @@ axme-sdk-go/
 ├── examples/
 │   └── basic_submit.go        # Minimal language-native quickstart
 └── docs/
-    └── diagrams/              # Diagram copies for README embedding
 ```
 
 ---
