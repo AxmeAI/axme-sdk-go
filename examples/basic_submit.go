@@ -43,8 +43,7 @@ func main() {
 	created, err := client.CreateIntent(context.Background(), map[string]any{
 		"intent_type":    "intent.demo.v1",
 		"correlation_id": correlationID,
-		"from_agent":     "agent://basic/go/source",
-		"to_agent":       "agent://basic/go/target",
+		"to_agent":       "agent://acme-corp/production/target",
 		"payload":        map[string]any{"task": "hello-from-go"},
 	}, axme.RequestOptions{})
 	if err != nil {

@@ -200,6 +200,36 @@ func (c *Client) RevokeServiceAccountKey(
 	)
 }
 
+func (c *Client) ListAgents(
+	ctx context.Context,
+	orgID string,
+	workspaceID string,
+	limit *int,
+	options RequestOptions,
+) (map[string]any, error) {
+	query := map[string]string{"org_id": orgID, "workspace_id": workspaceID}
+	if limit != nil && *limit > 0 {
+		query["limit"] = strconv.Itoa(*limit)
+	}
+	return c.requestJSON(ctx, http.MethodGet, "/v1/agents", query, nil, options)
+}
+
+func (c *Client) GetAgent(
+	ctx context.Context,
+	address string,
+	options RequestOptions,
+) (map[string]any, error) {
+	pathPart := strings.TrimPrefix(strings.TrimSpace(address), "agent://")
+	return c.requestJSON(
+		ctx,
+		http.MethodGet,
+		fmt.Sprintf("/v1/agents/%s", pathPart),
+		nil,
+		nil,
+		options,
+	)
+}
+
 func (c *Client) CreateIntent(
 	ctx context.Context,
 	payload map[string]any,
