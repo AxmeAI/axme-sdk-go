@@ -238,6 +238,31 @@ func (c *Client) CreateIntent(
 	return c.requestJSON(ctx, http.MethodPost, "/v1/intents", nil, payload, options)
 }
 
+// ApplyScenario submits a ScenarioBundle to POST /v1/scenarios/bundle.
+//
+// The server provisions missing agents, compiles the workflow, and creates the intent in one
+// atomic operation.  Returns the full bundle response including intent_id, status,
+// pending_with, and resolved agents.
+func (c *Client) ApplyScenario(
+	ctx context.Context,
+	bundle map[string]any,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.requestJSON(ctx, http.MethodPost, "/v1/scenarios/bundle", nil, bundle, options)
+}
+
+// ValidateScenario performs a dry-run validation of a ScenarioBundle without creating any
+// resources.  Returns {"valid": bool, "errors": []string}.
+func (c *Client) ValidateScenario(
+	ctx context.Context,
+	bundle map[string]any,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.requestJSON(ctx, http.MethodPost, "/v1/scenarios/validate", nil, bundle, options)
+}
+
+
+
 func (c *Client) GetIntent(
 	ctx context.Context,
 	intentID string,
