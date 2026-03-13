@@ -261,6 +261,185 @@ func (c *Client) ValidateScenario(
 	return c.requestJSON(ctx, http.MethodPost, "/v1/scenarios/validate", nil, bundle, options)
 }
 
+// ListenOptions controls how Listen reconnects and yields events.
+type ListenOptions struct {
+	// Since is the minimum seq value from which to start receiving events (default 0).
+	Since int
+	// WaitSeconds is how long the server should hold the connection open before
+	// sending a keepalive/timeout event.  Must be >= 1 (default 15).
+	WaitSeconds int
+	// TraceID is an optional request-level trace identifier.
+	TraceID string
+}
+
+// Listen streams incoming intents for the given agent address via SSE and sends each
+// intent payload on the returned channel.  The channel is closed when ctx is cancelled
+// or a non-recoverable error occurs; the error is returned by the companion errCh channel.
+//
+// The caller should select on both channels:
+//
+//	intents, errCh := client.Listen(ctx, "agent://acme/main/validator", axme.ListenOptions{})
+//	for {
+//	    select {
+//	    case intent, ok := <-intents:
+//	        if !ok { return }
+//	        process(intent)
+//	    case err := <-errCh:
+//	        if err != nil { log.Fatal(err) }
+//	    }
+//	}
+//
+// The since cursor is advanced automatically, so reconnects replay from the last seen
+// sequence number and no events are missed.
+func (c *Client) Listen(
+	ctx context.Context,
+	address string,
+	options ListenOptions,
+) (<-chan map[string]any, <-chan error) {
+	intents := make(chan map[string]any, 16)
+	errCh := make(chan error, 1)
+
+	waitSeconds := options.WaitSeconds
+	if waitSeconds < 1 {
+		waitSeconds = 15
+	}
+
+	pathPart := strings.TrimPrefix(strings.TrimSpace(address), "agent://")
+
+	go func() {
+		defer close(intents)
+		defer close(errCh)
+
+		nextSince := options.Since
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			events, err := c.fetchAgentIntentStream(ctx, pathPart, nextSince, waitSeconds, options.TraceID)
+			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				errCh <- err
+				return
+			}
+
+			for _, event := range events {
+				if seq, ok := event["seq"]; ok {
+					if seqNum, ok := seq.(float64); ok {
+						s := int(seqNum)
+						if s > nextSince {
+							nextSince = s
+						}
+					}
+				}
+				select {
+				case intents <- event:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+
+	return intents, errCh
+}
+
+// fetchAgentIntentStream fetches one SSE batch from GET /v1/agents/{path}/intents/stream
+// and returns the parsed intent payloads (keepalive events are filtered out).
+func (c *Client) fetchAgentIntentStream(
+	ctx context.Context,
+	pathPart string,
+	since int,
+	waitSeconds int,
+	traceID string,
+) ([]map[string]any, error) {
+	streamURL, err := url.Parse(fmt.Sprintf("%s/v1/agents/%s/intents/stream", c.baseURL, pathPart))
+	if err != nil {
+		return nil, err
+	}
+	params := streamURL.Query()
+	params.Set("since", strconv.Itoa(since))
+	params.Set("wait_seconds", strconv.Itoa(waitSeconds))
+	streamURL.RawQuery = params.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, streamURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("x-api-key", c.apiKey)
+	if c.actorToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.actorToken)
+	}
+	req.Header.Set("Accept", "text/event-stream")
+	if strings.TrimSpace(traceID) != "" {
+		req.Header.Set("X-Trace-Id", traceID)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, &HTTPError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
+	}
+
+	return parseAgentSseEvents(string(bodyBytes)), nil
+}
+
+// parseAgentSseEvents parses an SSE response body and returns intent payloads.
+// Events with event type "stream.timeout" (keepalives) are ignored.
+func parseAgentSseEvents(body string) []map[string]any {
+	var events []map[string]any
+	lines := strings.Split(body, "\n")
+	var currentEvent string
+	var dataLines []string
+
+	flush := func() {
+		if strings.HasPrefix(currentEvent, "intent.") && len(dataLines) > 0 {
+			raw := strings.Join(dataLines, "\n")
+			var payload map[string]any
+			if err := json.Unmarshal([]byte(raw), &payload); err == nil {
+				events = append(events, payload)
+			}
+		}
+		currentEvent = ""
+		dataLines = nil
+	}
+
+	for _, line := range lines {
+		line = strings.TrimRight(line, "\r")
+		if line == "" {
+			flush()
+			continue
+		}
+		if strings.HasPrefix(line, ":") {
+			continue
+		}
+		if strings.HasPrefix(line, "event:") {
+			currentEvent = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+			continue
+		}
+		if strings.HasPrefix(line, "data:") {
+			dataLines = append(dataLines, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+		}
+	}
+	flush()
+
+	return events
+}
+
 
 
 func (c *Client) GetIntent(

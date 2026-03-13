@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestRegisterNick(t *testing.T) {
@@ -1563,5 +1565,208 @@ func TestRoutingTransportDeliveryAndBillingEndpoints(t *testing.T) {
 	invoice, err := client.GetBillingInvoice(context.Background(), invoiceID, RequestOptions{})
 	if err != nil || invoice["invoice_id"] != invoiceID {
 		t.Fatalf("get billing invoice failed: %v, response=%v", err, invoice)
+	}
+}
+
+func makeSseBody(events [][]string) string {
+	var sb strings.Builder
+	for _, parts := range events {
+		eventType := parts[0]
+		data := parts[1]
+		sb.WriteString("event: ")
+		sb.WriteString(eventType)
+		sb.WriteString("\n")
+		sb.WriteString("data: ")
+		sb.WriteString(data)
+		sb.WriteString("\n\n")
+	}
+	return sb.String()
+}
+
+func TestListenYieldsIntentsFromSse(t *testing.T) {
+	intent1 := `{"intent_id":"aaa-1","seq":1,"event_type":"intent.submitted","status":"SUBMITTED"}`
+	intent2 := `{"intent_id":"bbb-2","seq":2,"event_type":"intent.submitted","status":"SUBMITTED"}`
+
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Path != "/v1/agents/acme/main/router/intents/stream" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Header.Get("x-api-key") != "token" {
+			t.Fatalf("missing x-api-key header")
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		if calls == 1 {
+			_, _ = w.Write([]byte(makeSseBody([][]string{
+				{"intent.submitted", intent1},
+				{"intent.submitted", intent2},
+			})))
+		}
+	}))
+	defer server.Close()
+
+	client, _ := NewClient(ClientConfig{BaseURL: server.URL, APIKey: "token", HTTPClient: server.Client()})
+	ctx, cancel := context.WithCancel(context.Background())
+
+	intents, errCh := client.Listen(ctx, "agent://acme/main/router", ListenOptions{WaitSeconds: 1})
+
+	var received []map[string]any
+	received = append(received, <-intents)
+	received = append(received, <-intents)
+	cancel()
+
+	// Drain channels
+	for range intents {
+	}
+	if err := <-errCh; err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(received) != 2 {
+		t.Fatalf("expected 2 intents, got %d", len(received))
+	}
+	if received[0]["intent_id"] != "aaa-1" {
+		t.Fatalf("unexpected intent_id: %v", received[0]["intent_id"])
+	}
+	if received[1]["intent_id"] != "bbb-2" {
+		t.Fatalf("unexpected intent_id: %v", received[1]["intent_id"])
+	}
+}
+
+func TestListenStripsAgentScheme(t *testing.T) {
+	var capturedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		w.Header().Set("Content-Type", "text/event-stream")
+	}))
+	defer server.Close()
+
+	client, _ := NewClient(ClientConfig{BaseURL: server.URL, APIKey: "token", HTTPClient: server.Client()})
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	intents, errCh := client.Listen(ctx, "agent://org/ws/svc", ListenOptions{WaitSeconds: 1})
+	for range intents {
+	}
+	<-errCh
+
+	if capturedPath != "/v1/agents/org/ws/svc/intents/stream" {
+		t.Fatalf("unexpected path: %s", capturedPath)
+	}
+}
+
+func TestListenAdvancesSinceCursor(t *testing.T) {
+	intent := `{"intent_id":"x-5","seq":5,"event_type":"intent.submitted","status":"SUBMITTED"}`
+	sinceValues := []string{}
+	calls := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		sinceValues = append(sinceValues, r.URL.Query().Get("since"))
+		w.Header().Set("Content-Type", "text/event-stream")
+		if calls == 1 {
+			_, _ = w.Write([]byte(makeSseBody([][]string{{"intent.submitted", intent}})))
+		}
+	}))
+	defer server.Close()
+
+	client, _ := NewClient(ClientConfig{BaseURL: server.URL, APIKey: "token", HTTPClient: server.Client()})
+	ctx, cancel := context.WithCancel(context.Background())
+
+	intents, errCh := client.Listen(ctx, "acme/main/worker", ListenOptions{WaitSeconds: 1})
+
+	// Receive one, then cancel
+	<-intents
+	cancel()
+	for range intents {
+	}
+	<-errCh
+
+	if len(sinceValues) < 1 {
+		t.Fatal("expected at least one stream call")
+	}
+	if sinceValues[0] != "0" {
+		t.Fatalf("first call should have since=0, got %s", sinceValues[0])
+	}
+	if len(sinceValues) >= 2 && sinceValues[1] != "5" {
+		t.Fatalf("second call should have since=5, got %s", sinceValues[1])
+	}
+}
+
+func TestListenPropagatesHTTPError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"detail":"forbidden"}`, http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	client, _ := NewClient(ClientConfig{BaseURL: server.URL, APIKey: "token", HTTPClient: server.Client()})
+	ctx := context.Background()
+
+	intents, errCh := client.Listen(ctx, "acme/main/blocked", ListenOptions{WaitSeconds: 1})
+	for range intents {
+	}
+	err := <-errCh
+	if err == nil {
+		t.Fatal("expected an error from 403 response")
+	}
+	httpErr, ok := err.(*HTTPError)
+	if !ok {
+		t.Fatalf("expected *HTTPError, got %T: %v", err, err)
+	}
+	if httpErr.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", httpErr.StatusCode)
+	}
+}
+
+func TestListenIgnoresKeepaliveEvents(t *testing.T) {
+	intent := `{"intent_id":"real-1","seq":1,"event_type":"intent.submitted","status":"SUBMITTED"}`
+	calls := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "text/event-stream")
+		if calls == 1 {
+			body := "event: stream.timeout\ndata: {}\n\n" +
+				makeSseBody([][]string{{"intent.submitted", intent}})
+			_, _ = w.Write([]byte(body))
+		}
+	}))
+	defer server.Close()
+
+	client, _ := NewClient(ClientConfig{BaseURL: server.URL, APIKey: "token", HTTPClient: server.Client()})
+	ctx, cancel := context.WithCancel(context.Background())
+
+	intents, errCh := client.Listen(ctx, "acme/main/keep", ListenOptions{WaitSeconds: 1})
+
+	received := <-intents
+	cancel()
+	for range intents {
+	}
+	<-errCh
+
+	if received["intent_id"] != "real-1" {
+		t.Fatalf("unexpected intent_id: %v", received["intent_id"])
+	}
+}
+
+func TestListenStopsOnContextCancel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Return empty SSE response — no events
+		w.Header().Set("Content-Type", "text/event-stream")
+	}))
+	defer server.Close()
+
+	client, _ := NewClient(ClientConfig{BaseURL: server.URL, APIKey: "token", HTTPClient: server.Client()})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	intents, errCh := client.Listen(ctx, "acme/main/stopped", ListenOptions{WaitSeconds: 1})
+	for range intents {
+		t.Fatal("should not receive any intents after immediate cancel")
+	}
+	err := <-errCh
+	if err != nil {
+		t.Fatalf("expected nil error on cancel, got %v", err)
 	}
 }
