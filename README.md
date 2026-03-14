@@ -97,16 +97,23 @@ func main() {
     }
     fmt.Println(capabilities)
 
-    // Send an intent
+    // Send an intent to a registered agent address
     intent, err := client.CreateIntent(ctx, map[string]any{
-        "intent_type":  "order.fulfillment.v1",
-        "payload":      map[string]any{"order_id": "ord_123", "priority": "high"},
-        "owner_agent":  "agent://fulfillment-service",
+        "intent_type": "order.fulfillment.v1",
+        "to_agent":    "agent://acme-corp/production/fulfillment-service",
+        "payload":     map[string]any{"order_id": "ord_123", "priority": "high"},
     }, axme.RequestOptions{IdempotencyKey: "fulfill-ord-123-001"})
     if err != nil {
         log.Fatal(err)
     }
     fmt.Println(intent["intent_id"], intent["status"])
+
+    // List registered agent addresses
+    agents, err := client.ListAgents(ctx, "acme-corp-uuid", "prod-ws-uuid", nil, axme.RequestOptions{})
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(agents["agents"])
 }
 ```
 
