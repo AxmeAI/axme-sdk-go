@@ -3,6 +3,7 @@ package axme
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const defaultBaseURL = "https://api.cloud.axme.ai"
@@ -1430,6 +1432,287 @@ func (c *Client) GetBillingInvoice(
 		nil,
 		options,
 	)
+}
+
+// generateUUID returns a new random UUID v4 string.
+func generateUUID() string {
+	var buf [16]byte
+	_, _ = rand.Read(buf[:])
+	buf[6] = (buf[6] & 0x0f) | 0x40 // version 4
+	buf[8] = (buf[8] & 0x3f) | 0x80 // variant 10
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		buf[0:4], buf[4:6], buf[6:8], buf[8:10], buf[10:16])
+}
+
+// terminalStatuses is the set of intent statuses that indicate the intent lifecycle is over.
+var terminalStatuses = map[string]bool{
+	"COMPLETED": true,
+	"FAILED":    true,
+	"CANCELED":  true,
+	"TIMED_OUT": true,
+}
+
+// SendIntent is a convenience wrapper around CreateIntent that auto-generates a
+// correlation_id (UUID) if one is not already present in the payload.  Returns
+// the intent_id string from the response.
+func (c *Client) SendIntent(
+	ctx context.Context,
+	payload map[string]any,
+	options RequestOptions,
+) (string, error) {
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	if _, ok := payload["correlation_id"]; !ok {
+		payload["correlation_id"] = generateUUID()
+	}
+
+	result, err := c.CreateIntent(ctx, payload, options)
+	if err != nil {
+		return "", err
+	}
+
+	intentID, ok := result["intent_id"].(string)
+	if !ok {
+		return "", fmt.Errorf("response missing intent_id string field")
+	}
+	return intentID, nil
+}
+
+// ObserveOptions controls how Observe polls intent lifecycle events.
+type ObserveOptions struct {
+	// Since is the minimum seq value from which to start receiving events (default 0).
+	Since int
+	// WaitSeconds is how long the server should hold the connection open before
+	// sending a keepalive/timeout event.  Must be >= 1 (default 15).
+	WaitSeconds int
+	// TimeoutMs is the maximum time in milliseconds to observe before stopping.
+	// 0 means no timeout.
+	TimeoutMs int
+	// TraceID is an optional request-level trace identifier.
+	TraceID string
+}
+
+// Observe yields intent lifecycle events via a channel by polling ListIntentEvents.
+// The channel is closed when the intent reaches a terminal status (COMPLETED, FAILED,
+// CANCELED, TIMED_OUT), when ctx is cancelled, or when the timeout expires.  Errors
+// are sent on the companion error channel.
+func (c *Client) Observe(
+	ctx context.Context,
+	intentID string,
+	options ObserveOptions,
+) (<-chan map[string]any, <-chan error) {
+	events := make(chan map[string]any, 16)
+	errCh := make(chan error, 1)
+
+	waitSeconds := options.WaitSeconds
+	if waitSeconds < 1 {
+		waitSeconds = 15
+	}
+
+	go func() {
+		defer close(events)
+		defer close(errCh)
+
+		var deadline <-chan time.Time
+		if options.TimeoutMs > 0 {
+			timer := time.NewTimer(time.Duration(options.TimeoutMs) * time.Millisecond)
+			defer timer.Stop()
+			deadline = timer.C
+		}
+
+		nextSince := options.Since
+		reqOpts := RequestOptions{TraceID: options.TraceID}
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-deadline:
+				return
+			default:
+			}
+
+			sinceVal := nextSince
+			result, err := c.ListIntentEvents(ctx, intentID, &sinceVal, reqOpts)
+			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				errCh <- err
+				return
+			}
+
+			// Extract the events array from the response.
+			items, _ := result["events"].([]any)
+			for _, item := range items {
+				event, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
+
+				// Advance the cursor.
+				if seq, ok := event["seq"]; ok {
+					if seqNum, ok := seq.(float64); ok {
+						s := int(seqNum)
+						if s > nextSince {
+							nextSince = s
+						}
+					}
+				}
+
+				select {
+				case events <- event:
+				case <-ctx.Done():
+					return
+				}
+
+				// Check for terminal status.
+				if status, ok := event["status"].(string); ok && terminalStatuses[status] {
+					return
+				}
+			}
+
+			// Pause before next poll.
+			select {
+			case <-ctx.Done():
+				return
+			case <-deadline:
+				return
+			case <-time.After(1 * time.Second):
+			}
+		}
+	}()
+
+	return events, errCh
+}
+
+// WaitFor blocks until the intent reaches a terminal state (COMPLETED, FAILED,
+// CANCELED, TIMED_OUT) and returns the terminal event.
+func (c *Client) WaitFor(
+	ctx context.Context,
+	intentID string,
+	options ObserveOptions,
+) (map[string]any, error) {
+	eventsCh, errCh := c.Observe(ctx, intentID, options)
+
+	var lastEvent map[string]any
+	for {
+		select {
+		case event, ok := <-eventsCh:
+			if !ok {
+				// Channel closed — return whatever we have.
+				if lastEvent != nil {
+					return lastEvent, nil
+				}
+				return nil, fmt.Errorf("observe channel closed without terminal event")
+			}
+			lastEvent = event
+			if status, ok := event["status"].(string); ok && terminalStatuses[status] {
+				return event, nil
+			}
+		case err := <-errCh:
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+}
+
+// Health performs a GET request to /v1/health and returns the response body.
+func (c *Client) Health(
+	ctx context.Context,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.requestJSON(ctx, http.MethodGet, "/v1/health", nil, nil, options)
+}
+
+const mcpEndpointPath = "/mcp"
+
+// mcpRequest sends a JSON-RPC 2.0 request to the MCP endpoint and returns the
+// result field from the response.  If the response contains an error field, it
+// is returned as an error.
+func (c *Client) mcpRequest(
+	ctx context.Context,
+	method string,
+	params map[string]any,
+	options RequestOptions,
+) (map[string]any, error) {
+	rpcID := generateUUID()
+	body := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      rpcID,
+		"method":  method,
+		"params":  params,
+	}
+
+	resp, err := c.requestJSON(ctx, http.MethodPost, mcpEndpointPath, nil, body, options)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check for JSON-RPC error.
+	if rpcErr, ok := resp["error"]; ok {
+		errMap, _ := rpcErr.(map[string]any)
+		if errMap != nil {
+			msg, _ := errMap["message"].(string)
+			code, _ := errMap["code"].(float64)
+			return nil, fmt.Errorf("mcp error %d: %s", int(code), msg)
+		}
+		return nil, fmt.Errorf("mcp error: %v", rpcErr)
+	}
+
+	if result, ok := resp["result"].(map[string]any); ok {
+		return result, nil
+	}
+
+	return resp, nil
+}
+
+// McpInitialize sends a JSON-RPC 2.0 "initialize" request to the MCP endpoint.
+func (c *Client) McpInitialize(
+	ctx context.Context,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.mcpRequest(ctx, "initialize", map[string]any{}, options)
+}
+
+// McpListTools sends a JSON-RPC 2.0 "tools/list" request to the MCP endpoint.
+func (c *Client) McpListTools(
+	ctx context.Context,
+	options RequestOptions,
+) (map[string]any, error) {
+	return c.mcpRequest(ctx, "tools/list", map[string]any{}, options)
+}
+
+// McpCallToolOptions controls a tools/call MCP request.
+type McpCallToolOptions struct {
+	Arguments      map[string]any
+	OwnerAgent     string
+	IdempotencyKey string
+	TraceID        string
+}
+
+// McpCallTool sends a JSON-RPC 2.0 "tools/call" request to the MCP endpoint.
+func (c *Client) McpCallTool(
+	ctx context.Context,
+	name string,
+	options McpCallToolOptions,
+) (map[string]any, error) {
+	params := map[string]any{
+		"name": name,
+	}
+	if options.Arguments != nil {
+		params["arguments"] = options.Arguments
+	}
+
+	reqOpts := RequestOptions{
+		OwnerAgent:     options.OwnerAgent,
+		IdempotencyKey: options.IdempotencyKey,
+		TraceID:        options.TraceID,
+	}
+
+	return c.mcpRequest(ctx, "tools/call", params, reqOpts)
 }
 
 func (c *Client) requestJSON(
