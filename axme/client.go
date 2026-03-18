@@ -1674,7 +1674,9 @@ func (c *Client) McpInitialize(
 	ctx context.Context,
 	options RequestOptions,
 ) (map[string]any, error) {
-	return c.mcpRequest(ctx, "initialize", map[string]any{}, options)
+	return c.mcpRequest(ctx, "initialize", map[string]any{
+		"protocolVersion": "2024-11-05",
+	}, options)
 }
 
 // McpListTools sends a JSON-RPC 2.0 "tools/list" request to the MCP endpoint.
