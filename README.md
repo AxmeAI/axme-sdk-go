@@ -169,7 +169,56 @@ if err != nil {
 
 ---
 
-## Approvals
+## Human-in-the-Loop (8 Task Types)
+
+AXME supports 8 human task types. Each pauses the workflow and notifies a human via email with a link to a web task page.
+
+| Task type | Use case | Default outcomes |
+|-----------|----------|-----------------|
+| `approval` | Approve or reject a request | approved, rejected |
+| `confirmation` | Confirm a real-world action completed | confirmed, denied |
+| `review` | Review content with multiple outcomes | approved, changes_requested, rejected |
+| `assignment` | Assign work to a person or team | assigned, declined |
+| `form` | Collect structured data via form fields | submitted |
+| `clarification` | Request clarification (comment required) | provided, declined |
+| `manual_action` | Physical task completion (evidence required) | completed, failed |
+| `override` | Override a policy gate (comment required) | override_approved, rejected |
+
+```go
+// Create an intent with a human task step
+result, err := client.CreateIntent(ctx, axme.CreateIntentParams{
+    IntentType: "intent.budget.approval.v1",
+    ToAgent:    "agent://agent_core",
+    Payload:    map[string]any{"amount": 32000, "department": "engineering"},
+    HumanTask: &axme.HumanTask{
+        Title:           "Approve Q3 budget",
+        Description:     "Review and approve the Q3 infrastructure budget.",
+        TaskType:        "approval",
+        NotifyEmail:     "approver@example.com",
+        AllowedOutcomes: []string{"approved", "rejected"},
+    },
+})
+```
+
+Task types with forms use `form_schema` to define required fields:
+
+```go
+HumanTask: &axme.HumanTask{
+    Title:       "Assign incident commander",
+    TaskType:    "assignment",
+    NotifyEmail: "oncall@example.com",
+    FormSchema: map[string]any{
+        "type":     "object",
+        "required": []string{"assignee"},
+        "properties": map[string]any{
+            "assignee": map[string]any{"type": "string", "title": "Commander name"},
+            "priority": map[string]any{"type": "string", "enum": []string{"P1", "P2", "P3"}},
+        },
+    },
+},
+```
+
+### Programmatic approvals (inbox API)
 
 ```go
 inbox, err := client.ListInbox(ctx, "agent://manager", axme.RequestOptions{})
