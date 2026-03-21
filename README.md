@@ -299,6 +299,37 @@ renamed, _ := client.RenameNick(ctx,
 
 ---
 
+## MCP (Model Context Protocol)
+
+The Go SDK includes a built-in MCP endpoint client for gateway-hosted MCP sessions.
+
+```go
+// Initialize an MCP session
+init, err := client.McpInitialize(ctx, axme.RequestOptions{})
+fmt.Println(init["serverInfo"])
+
+// List available tools
+tools, err := client.McpListTools(ctx, axme.RequestOptions{})
+for _, tool := range tools["tools"].([]any) {
+    t := tool.(map[string]any)
+    fmt.Println(t["name"])
+}
+
+// Call a tool
+result, err := client.McpCallTool(ctx, "create_intent", axme.McpCallToolOptions{
+    Arguments: map[string]any{
+        "intent_type":  "order.fulfillment.v1",
+        "payload":      map[string]any{"order_id": "ord_123"},
+        "owner_agent":  "agent://fulfillment-service",
+    },
+})
+fmt.Println(result)
+```
+
+By default the SDK posts to `/mcp`. Override with `McpEndpointPath` in client options.
+
+---
+
 ## Repository Structure
 
 ```
