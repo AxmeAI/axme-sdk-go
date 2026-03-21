@@ -299,6 +299,34 @@ renamed, _ := client.RenameNick(ctx,
 
 ---
 
+## Cross-Org Delivery Control
+
+Organizations can control which external orgs may send intents to their agents:
+
+1. **Org receive policy** — org-wide default (`open`, `allowlist`, `closed`)
+2. **Agent receive override** — per-agent exceptions to the org policy
+
+```go
+// Get org receive policy
+policy, _ := client.Get(ctx, fmt.Sprintf("/v1/organizations/%s/receive-policy", orgID))
+
+// Set to allowlist mode
+client.Put(ctx, fmt.Sprintf("/v1/organizations/%s/receive-policy", orgID), map[string]any{
+    "mode":      "allowlist",
+    "allowlist": []string{"org_id_of_trusted_partner"},
+})
+
+// Per-agent override
+client.Put(ctx, fmt.Sprintf("/v1/agents/%s/receive-override", address), map[string]any{
+    "override_type": "allow",
+    "source_org_id": "org_id_of_partner",
+})
+```
+
+See [`cross-org-receive-policy.md`](https://github.com/AxmeAI/axme-docs/blob/main/docs/cross-org-receive-policy.md) for the full decision flow.
+
+---
+
 ## MCP (Model Context Protocol)
 
 The Go SDK includes a built-in MCP endpoint client for gateway-hosted MCP sessions.
