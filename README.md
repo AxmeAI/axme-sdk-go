@@ -385,7 +385,7 @@ go test ./...
 | Repository | Role |
 |---|---|
 | [axme-docs](https://github.com/AxmeAI/axme-docs) | Full API reference and integration guides |
-| [axme-spec](https://github.com/AxmeAI/axme-spec) | Schema contracts this SDK implements |
+| [axp-spec](https://github.com/AxmeAI/axp-spec) | Schema contracts this SDK implements |
 | [axme-conformance](https://github.com/AxmeAI/axme-conformance) | Conformance suite that validates this SDK |
 | [axme-examples](https://github.com/AxmeAI/axme-examples) | Runnable examples using this SDK |
 | [axme-cli](https://github.com/AxmeAI/axme-cli) | CLI tool built on top of this SDK |
