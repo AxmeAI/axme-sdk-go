@@ -14,6 +14,8 @@
 go get github.com/AxmeAI/axme-sdk-go@latest
 ```
 
+Requires Go 1.22+.
+
 ---
 
 ## Quick Start
