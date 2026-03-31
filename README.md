@@ -89,6 +89,8 @@ client.Mesh.ReportMetric(ctx, axme.Metric{Success: true, LatencyMs: 230, CostUSD
 
 Set action policies (allowlist/denylist intent types) and cost policies (intents/day, $/day limits) per agent via dashboard or API. Mesh module coming soon to this SDK - [Python SDK](https://github.com/AxmeAI/axme-sdk-python) available now. [Full overview](https://github.com/AxmeAI/axme#agent-mesh---see-and-control-your-agents).
 
+Open the live dashboard at [mesh.axme.ai](https://mesh.axme.ai) or run `axme mesh dashboard` from the CLI.
+
 ---
 
 ## Examples
