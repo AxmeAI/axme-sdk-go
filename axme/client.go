@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -46,6 +47,9 @@ type Client struct {
 	apiKey     string
 	actorToken string
 	httpClient *http.Client
+
+	meshOnce sync.Once
+	mesh     *MeshClient
 }
 
 func NewClient(config ClientConfig) (*Client, error) {
@@ -78,6 +82,15 @@ func NewClient(config ClientConfig) (*Client, error) {
 		actorToken: actorToken,
 		httpClient: httpClient,
 	}, nil
+}
+
+// Mesh returns the Agent Mesh sub-client for heartbeat, health monitoring,
+// metrics reporting, and agent lifecycle management. Lazily initialized.
+func (c *Client) Mesh() *MeshClient {
+	c.meshOnce.Do(func() {
+		c.mesh = newMeshClient(c)
+	})
+	return c.mesh
 }
 
 func (c *Client) RegisterNick(
