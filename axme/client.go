@@ -17,6 +17,10 @@ import (
 
 const defaultBaseURL = "https://api.cloud.axme.ai"
 
+// SDKVersion is the published axme-sdk-go version. Bump on every release.
+// Sent in X-Axme-Client header so AXME platform analytics can identify SDK usage.
+const SDKVersion = "0.2.0"
+
 type ClientConfig struct {
 	BaseURL     string
 	APIKey      string
@@ -387,6 +391,7 @@ func (c *Client) fetchAgentIntentStream(
 		return nil, err
 	}
 	req.Header.Set("x-api-key", c.apiKey)
+	req.Header.Set("X-Axme-Client", "axme-sdk-go/"+SDKVersion)
 	if c.actorToken != "" {
 		req.Header.Set("Authorization", "Bearer "+c.actorToken)
 	}
@@ -1768,6 +1773,7 @@ func (c *Client) requestJSON(
 	}
 
 	request.Header.Set("x-api-key", c.apiKey)
+	request.Header.Set("X-Axme-Client", "axme-sdk-go/"+SDKVersion)
 	if strings.TrimSpace(options.Authorization) != "" {
 		request.Header.Set("Authorization", options.Authorization)
 	} else if c.actorToken != "" {
