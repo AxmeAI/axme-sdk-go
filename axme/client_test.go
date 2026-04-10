@@ -60,6 +60,29 @@ func TestRegisterNick(t *testing.T) {
 	}
 }
 
+func TestClientSendsXAxmeClientHeader(t *testing.T) {
+	expected := "axme-sdk-go/" + SDKVersion
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Axme-Client"); got != expected {
+			t.Fatalf("unexpected X-Axme-Client header: got=%q want=%q", got, expected)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "available": true})
+	}))
+	defer server.Close()
+
+	client, err := NewClient(ClientConfig{
+		BaseURL:    server.URL,
+		APIKey:     "token",
+		HTTPClient: server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	if _, err := client.CheckNick(context.Background(), "@partner.user", RequestOptions{}); err != nil {
+		t.Fatalf("check nick failed: %v", err)
+	}
+}
+
 func TestClientSendsConfiguredActorToken(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("x-api-key"); got != "platform-token" {
